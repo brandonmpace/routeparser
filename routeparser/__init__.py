@@ -170,8 +170,8 @@ class Route:
     def __hash__(self):
         return hash(
             (
-                self._network,
-                self._gateway,
+                self._network.exploded,
+                self._gateway.exploded if self._gateway else "None",
                 self._metric,
                 self._interface
             )
