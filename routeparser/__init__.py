@@ -478,7 +478,7 @@ class RoutingTable:
                     elif match.netmask > final_match.netmask:
                         logger.warning(f"POSSIBLE BUG: the list is likely not sorted properly!")
                         final_match = match
-                    elif (match.network == final_match.network) and (match.netmask == final_match.netmask):
+                    elif match.network.exploded == final_match.network.exploded:
                         if self._prefer_lowest_metric:
                             if match.metric < final_match.metric:
                                 final_match = match
