@@ -34,7 +34,8 @@ import ipaddress
 import logging
 import re
 
-from typing import Callable, List, Optional, Union
+from collections import defaultdict
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 
 logger = logging.getLogger(__name__)
@@ -538,3 +539,60 @@ class RoutingTable:
     @property
     def routes(self):
         return self._routes.copy()
+
+
+input_types: Tuple[str, ...] = ("ip route", "netstat -r", "route (Linux)", "route print (Windows)")
+
+
+input_type_route_function_map: Dict[str, Callable] = {
+    "ip route": Route.from_ip_route_lines,
+    "netstat -r": Route.from_linux_netstat_lines,
+    "route (Linux)": Route.from_linux_route_lines,
+    "route print (Windows)": Route.from_windows_route_print_lines
+}
+assert all(item in input_type_route_function_map for item in input_types)
+
+
+input_type_table_function_map: Dict[str, Callable] = {
+    "ip route": RoutingTable.from_ip_route_lines,
+    "netstat -r": RoutingTable.from_linux_netstat_lines,
+    "route (Linux)": RoutingTable.from_linux_route_lines,
+    "route print (Windows)": RoutingTable.from_windows_route_print_lines
+}
+assert all(item in input_type_table_function_map for item in input_types)
+
+
+input_type_id_function_map: Dict[str, Callable] = {
+    "ip route": is_ip_route_line,
+    "netstat -r": is_netstat_route_line,
+    "route (Linux)": is_linux_route_line,
+    "route print (Windows)": is_route_print_v4_line
+}
+assert all(item in input_type_id_function_map for item in input_types)
+
+
+def function_for_content_type(input_type: str, table: bool = True) -> Callable:
+    """Get the function to create a Route or RoutingTable from a given input type"""
+    if input_type in input_types:
+        if table:
+            return input_type_table_function_map[input_type]
+        else:
+            return input_type_route_function_map[input_type]
+    else:
+        raise ValueError(f"Invalid content type: '{input_type}'")
+
+
+def identify_input(lines: List[str]) -> List[str]:
+    """Identify what supported type(s) of output are contained in lines (if any)"""
+    matches: List[str] = []
+    match_counts = defaultdict(int)
+
+    for line in lines:
+        for match_type, match_func in input_type_id_function_map.items():
+            if match_func(line):
+                match_counts[match_type] += 1
+
+    for match_type in match_counts:
+        matches.append(match_type)
+
+    return matches
