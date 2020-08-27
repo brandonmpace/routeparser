@@ -51,7 +51,7 @@ windows_route_print_v4_line_rec = re.compile(windows_route_print_v4_line_re)
 
 def is_ip_route_line(line: str) -> bool:
     """For 'ip route' on Linux"""
-    if (" dev " in line) and (" proto " in line):
+    if (" dev " in line) and ((" scope " in line) or (" proto " in line)):
         return True
     else:
         return False
