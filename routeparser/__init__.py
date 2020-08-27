@@ -27,7 +27,7 @@ __copyright__ = "Copyright 2020 Brandon M. Pace"
 __license__ = "GNU LGPL 3+"
 __maintainer__ = "Brandon M. Pace"
 __status__ = "Development"
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 
 import ipaddress

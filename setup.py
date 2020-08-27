@@ -5,7 +5,7 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
     name="routeparser",
-    version="0.0.2",
+    version="0.0.3",
     author="Brandon M. Pace",
     author_email="brandonmpace@gmail.com",
     description="A route output text parser",
