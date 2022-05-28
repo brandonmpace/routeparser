@@ -41,24 +41,34 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 logger = logging.getLogger(__name__)
 
 dotted_ip_re = r"(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){0,3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)"
-netstat_line_re = rf"^({dotted_ip_re}|default)\s+({dotted_ip_re}|\*)\s+({dotted_ip_re})\s+\w+\s+\d+\s\d+\s+\d+\s([\w\d\-\.\:]+)"
+ip_route_special_re = rf"^(blackhole|unreachable|prohibit)\s{dotted_ip_re}"
+ip_route_special_rec = re.compile(ip_route_special_re)
+netstat_line_re = rf"^({dotted_ip_re}|default)\s+({dotted_ip_re}|\*|\-)\s+({dotted_ip_re})\s+[\!\w]+\s+(\d+|\-)\s(\d+|\-)\s+(\d+|\-)\s([\w\d\-\.\:]+|\*)"
 netstat_line_rec = re.compile(netstat_line_re)
-linux_route_line_re = rf"^({dotted_ip_re}|default)\s+({dotted_ip_re}|\*)\s+({dotted_ip_re})\s+\w+\s+(\d+)\s\s+\d+\s+\d+\s([\w\d\-\.\:]+)"
+linux_route_line_re = rf"^({dotted_ip_re}|default)\s+({dotted_ip_re}|\*|\-)\s+({dotted_ip_re})\s+[\!\w]+\s+(\d+)\s\s+(\d+|\-)\s+\d+\s([\w\d\-\.\:]+|\*)"
 linux_route_line_rec = re.compile(linux_route_line_re)
 windows_route_print_v4_line_re = rf"^\s+({dotted_ip_re})\s+({dotted_ip_re})\s+({dotted_ip_re}|On-link)\s+({dotted_ip_re})\s+(\d+)"
 windows_route_print_v4_line_rec = re.compile(windows_route_print_v4_line_re)
 
+special_route_types = ("blackhole", "unreachable", "prohibit")
+
 
 def is_ip_route_line(line: str) -> bool:
-    """For 'ip route' on Linux"""
+    """
+    For output of 'ip route' on Linux
+    """
     if (" dev " in line) and ((" scope " in line) or (" proto " in line)):
+        return True
+    elif ip_route_special_rec.match(line):
         return True
     else:
         return False
 
 
 def is_linux_route_line(line: str) -> bool:
-    """For output of 'route' or 'route -n' on Linux"""
+    """
+    For output of 'route' or 'route -n' on Linux
+    """
     if linux_route_line_rec.match(line):
         return True
     else:
@@ -66,7 +76,9 @@ def is_linux_route_line(line: str) -> bool:
 
 
 def is_netstat_route_line(line: str) -> bool:
-    """For output of 'netstat -r', 'netstat -rn' or 'netstat -rnv' on Linux"""
+    """
+    For output of 'netstat -r', 'netstat -rn' or 'netstat -rnv' on Linux
+    """
     if netstat_line_rec.match(line):
         return True
     else:
@@ -74,7 +86,9 @@ def is_netstat_route_line(line: str) -> bool:
 
 
 def is_route_print_v4_line(line: str) -> bool:
-    """For IPv4 lines in 'route print' on Windows"""
+    """
+    For IPv4 lines in 'route print' on Windows
+    """
     if windows_route_print_v4_line_rec.match(line):
         return True
     else:
@@ -85,12 +99,28 @@ class Route:
     def __init__(self, network: str, interface: str, gateway: str = "", metric: int = 0):
         self._network: Union[ipaddress.IPv4Network, ipaddress.IPv6Network] = ipaddress.ip_network(network)
         self._interface = interface
-        if gateway:
-            self._gateway: Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]] = ipaddress.ip_address(gateway)
-            if self._gateway.version != self._network.version:
-                raise ValueError(
-                    f"IP version mismatch! Network: {self._network.version} Gateway: {self._gateway.version}"
-                )
+
+        if interface == "*":
+            self._special = True
+            self._special_route_type = "blackhole"
+        elif gateway == "-" and interface == "-":
+            self._special = True
+            self._special_route_type = "unreachable"
+        else:
+            self._special = False
+            self._special_route_type = ""
+
+        if gateway and gateway != "-":
+            if gateway in special_route_types:
+                self._special = True
+                self._special_route_type = gateway
+                self._gateway = None
+            else:
+                self._gateway: Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]] = ipaddress.ip_address(gateway)
+                if self._gateway.version != self._network.version:
+                    raise ValueError(
+                        f"IP version mismatch! Network: {self._network.version} Gateway: {self._gateway.version}"
+                    )
         else:
             self._gateway = None
 
@@ -221,7 +251,10 @@ class Route:
             return hash(self) != hash(other)
 
     def __repr__(self):
-        return "%s(%r, %r, ...)" % (self.__class__.__name__, self._network, self._gateway)
+        if self._special:
+            return "%s(%r, %r, ...)" % (self.__class__.__name__, self._network, self._special_route_type)
+        else:
+            return "%s(%r, %r, ...)" % (self.__class__.__name__, self._network, self._gateway)
 
     @property
     def gateway(self) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
@@ -248,19 +281,38 @@ class Route:
         return self._network.prefixlen
 
     @property
+    def special(self) -> bool:
+        """
+        True if the route is 'special', e.g. blackhole, reject/unreachable, prohibit
+        """
+        return self._special
+    @property
+    def special_route_type(self) -> str:
+        """
+        Human-readable string representing the type of special route, if applicable
+        """
+        return self._special_route_type
+
+    @property
     def version(self) -> int:
         return self._network.version
 
     @classmethod
     def from_ip_route_line(cls, line: str, safe: bool = False) -> Optional['Route']:
-        """Handles a single output line of 'ip route' and converts to a Route object"""
+        """
+        Handles a single output line of 'ip route' and converts to a Route object
+        """
         if not is_ip_route_line(line):
             logger.debug(f"line does not appear to be relevant: '{line}'")
             return None
 
+        special_route = False
         split_line = line.split()
         if "via" in split_line:
             gateway = split_line[split_line.index("via") + 1]
+        elif split_line[0] in special_route_types:
+            gateway = split_line[0]
+            special_route = True
         else:
             gateway = ""
 
@@ -269,13 +321,15 @@ class Route:
                 network = "::/0"
             else:
                 network = "0.0.0.0/0"
+        elif special_route:
+            network = split_line[1]
         else:
             network = split_line[0]
 
         if "dev" in split_line:
             interface = split_line[split_line.index("dev") + 1]
         else:
-            logger.error(f"could not find interface in line: '{line}'")
+            logger.debug(f"could not find interface in line: '{line}'")
             interface = ""
 
         try:
@@ -291,7 +345,9 @@ class Route:
 
     @classmethod
     def from_ip_route_lines(cls, lines: List[str], safe: bool = False) -> List['Route']:
-        """Handles output of 'ip route' and converts to Route objects"""
+        """
+        Handles output of 'ip route' and converts to Route objects
+        """
         return cls.parse_lines(cls.from_ip_route_line, lines, safe)
 
     @classmethod
@@ -371,7 +427,9 @@ class Route:
 
     @classmethod
     def from_linux_route_lines(cls, lines: List[str], safe: bool = False) -> List['Route']:
-        """Handles output of LINUX 'route' or 'route -n' and converts to Route objects"""
+        """
+        Handles output of LINUX 'route' or 'route -n' and converts to Route objects
+        """
         return cls.parse_lines(cls.from_linux_route_line, lines, safe)
 
     @classmethod
@@ -421,9 +479,11 @@ class Route:
         routes: List[Route] = []
 
         for line in lines:
-            result = parser(line, safe)
+            result: Optional['Route'] = parser(line, safe)
             if result is None:
                 continue
+            if any(route.network == result.network and route.netmask == result.netmask for route in routes):
+                logger.warning(f"duplicate route {result}")
             routes.append(result)
 
         return routes
@@ -533,7 +593,7 @@ class RoutingTable:
         return matches
 
     @property
-    def prefer_lowest_metric(self):
+    def prefer_lowest_metric(self) -> bool:
         return self._prefer_lowest_metric
 
     @property
