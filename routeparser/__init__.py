@@ -1,5 +1,5 @@
 # -*- coding: UTF-8 -*-
-# Copyright (C) 2020 Brandon M. Pace
+# Copyright (C) 2020, 2022 Brandon M. Pace
 #
 # This file is part of routeparser
 #
@@ -23,7 +23,7 @@ The routeparser package provides a way to convert text output of routing informa
 
 
 __author__ = "Brandon M. Pace"
-__copyright__ = "Copyright 2020 Brandon M. Pace"
+__copyright__ = "Copyright 2020, 2022 Brandon M. Pace"
 __license__ = "GNU LGPL 3+"
 __maintainer__ = "Brandon M. Pace"
 __status__ = "Development"
