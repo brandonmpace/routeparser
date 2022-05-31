@@ -1,5 +1,31 @@
 [build-system]
-requires = ["setuptools>=42.2", "wheel", "setuptools_scm[toml]>=3.4.3"]
+requires = ["setuptools>=61.2.0", "wheel", "setuptools_scm[toml]>=3.4.3"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "routeparser"
+authors = [{name = "Brandon M. Pace", email = "brandonmpace@gmail.com"}]
+license = {text = "LGPL-3.0-or-later"}
+description = "A route command output text parser"
+readme = "README.rst"
+keywords = ["network", "route", "parser"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+]
+requires-python = ">=3.6.5"
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/brandonmpace/routeparser"
+
+[tool.setuptools]
+platforms = ["any"]
+include-package-data = false
+
+[tool.setuptools.packages]
+find = {namespaces = false}
 
 [tool.setuptools_scm]
